@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>12306 车票查询 · 智能路线推荐</title>
+<style>
+  :root { --blue: #1677ff; --bg: #f5f7fa; --card: #fff; --text: #1f2329; --muted: #8a919e; --green: #00b578; --orange: #ff8a00; --red: #f53f3f; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+  header { background: linear-gradient(135deg, #1677ff, #4096ff); color: #fff; padding: 28px 16px 60px; text-align: center; }
+  header h1 { font-size: 22px; font-weight: 600; }
+  header p { font-size: 13px; opacity: .85; margin-top: 6px; }
+  .search-card { max-width: 720px; margin: -36px auto 0; background: var(--card); border-radius: 14px; box-shadow: 0 4px 20px rgba(0,0,0,.08); padding: 20px; position: relative; z-index: 2; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .field { flex: 1; position: relative; }
+  .field label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .field input { width: 100%; border: 1px solid #e2e6ec; border-radius: 8px; padding: 10px 12px; font-size: 16px; outline: none; }
+  .field input:focus { border-color: var(--blue); }
+  .swap { width: 40px; height: 40px; border-radius: 50%; border: 1px solid #e2e6ec; background: #fff; cursor: pointer; font-size: 18px; color: var(--blue); flex-shrink: 0; margin-top: 18px; }
+  .suggest-list { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #e2e6ec; border-radius: 8px; margin-top: 4px; max-height: 240px; overflow: auto; z-index: 10; display: none; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+  .suggest-list div { padding: 10px 12px; font-size: 14px; cursor: pointer; }
+  .suggest-list div:hover { background: #f0f6ff; }
+  .suggest-list small { color: var(--muted); margin-left: 6px; }
+  .date-row { margin-top: 12px; display: flex; gap: 10px; }
+  .date-row input { flex: 1; border: 1px solid #e2e6ec; border-radius: 8px; padding: 10px 12px; font-size: 15px; }
+  .query-btn { width: 100%; margin-top: 14px; background: var(--blue); color: #fff; border: none; border-radius: 10px; padding: 13px; font-size: 16px; font-weight: 600; cursor: pointer; }
+  .query-btn:disabled { opacity: .6; }
+  main { max-width: 720px; margin: 18px auto 40px; padding: 0 12px; }
+  .sec-title { font-size: 16px; font-weight: 600; margin: 22px 0 10px; display: flex; align-items: center; gap: 8px; }
+  .sec-title .tag { font-size: 11px; background: #e8f3ff; color: var(--blue); padding: 2px 8px; border-radius: 10px; font-weight: 400; }
+  .rec-card { background: var(--card); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.05); border-left: 4px solid var(--blue); }
+  .rec-card.transfer { border-left-color: var(--orange); }
+  .rec-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .rec-type { font-size: 12px; padding: 2px 10px; border-radius: 10px; background: #e8f3ff; color: var(--blue); }
+  .rec-card.transfer .rec-type { background: #fff3e8; color: var(--orange); }
+  .seat-ok { color: var(--green); font-size: 13px; font-weight: 600; }
+  .seat-no { color: var(--muted); font-size: 13px; }
+  .train-line { font-size: 15px; font-weight: 600; }
+  .train-line .arrow { color: var(--muted); font-weight: 400; margin: 0 6px; }
+  .train-meta { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .leg { font-size: 14px; padding: 6px 0; border-top: 1px dashed #eee; }
+  .leg:first-of-type { border-top: none; }
+  table.trains { width: 100%; background: var(--card); border-radius: 12px; overflow: hidden; font-size: 13px; border-collapse: collapse; box-shadow: 0 2px 8px rgba(0,0,0,.05); }
+  table.trains th { background: #f7f9fc; padding: 10px 8px; font-weight: 600; color: var(--muted); font-size: 12px; text-align: left; white-space: nowrap; }
+  table.trains td { padding: 10px 8px; border-top: 1px solid #f0f2f5; vertical-align: top; }
+  .tcode { font-weight: 700; font-size: 14px; }
+  .ttime { font-size: 15px; font-weight: 600; }
+  .seats-cell { font-size: 12px; line-height: 1.7; color: var(--muted); }
+  .seats-cell b { color: var(--green); font-weight: 600; }
+  .loading, .empty, .error { text-align: center; padding: 30px; color: var(--muted); font-size: 14px; }
+  .error { color: var(--red); }
+  footer { text-align: center; font-size: 12px; color: var(--muted); padding: 20px; line-height: 1.8; }
+  footer a { color: var(--blue); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚄 12306 车票查询</h1>
+  <p>直达余票 · 智能换乘路线推荐（数据来自 12306 公开查询接口）</p>
+</header>
+
+<div class="search-card">
+  <div class="row">
+    <div class="field">
+      <label>出发地</label>
+      <input id="from" placeholder="如：深圳北" autocomplete="off">
+      <div class="suggest-list" id="fromList"></div>
+    </div>
+    <button class="swap" id="swapBtn" title="交换">⇄</button>
+    <div class="field">
+      <label>目的地</label>
+      <input id="to" placeholder="如：北京西" autocomplete="off">
+      <div class="suggest-list" id="toList"></div>
+    </div>
+  </div>
+  <div class="date-row">
+    <input type="date" id="date">
+  </div>
+  <button class="query-btn" id="queryBtn">查询路线</button>
+</div>
+
+<main id="result"></main>
+
+<footer>
+  查询原理基于 <a href="https://github.com/Joooook/12306-mcp" target="_blank">Joooook/12306-mcp</a> (MIT) 改写 ·
+  数据来自 12306 公开查询接口，仅供出行参考<br>
+  本站仅做车次与余票查询，不提供购票/抢票功能 · 接口: <a href="https://train12306.guoda086-5a5.workers.dev/api" target="_blank">API</a>
+</footer>
+
+<script>
+const API = 'https://train12306.guoda086-5a5.workers.dev';
+const $ = id => document.getElementById(id);
+
+// 日期默认明天,范围今天~+14天
+const today = new Date(), fmt = d => d.toISOString().slice(0, 10);
+$('date').min = fmt(today);
+$('date').max = fmt(new Date(Date.now() + 14 * 864e5));
+$('date').value = fmt(new Date(Date.now() + 864e5));
+
+// 车站联想
+function bindSuggest(inputId, listId) {
+  const input = $(inputId), list = $(listId);
+  let timer;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (!q) { list.style.display = 'none'; return; }
+    timer = setTimeout(async () => {
+      try {
+        const r = await fetch(API + '/api/stations?q=' + encodeURIComponent(q));
+        const data = await r.json();
+        if (!data.length) { list.style.display = 'none'; return; }
+        list.innerHTML = data.map(s => `<div data-name="${s.name}">${s.name}<small>${s.city}</small></div>`).join('');
+        list.style.display = 'block';
+        list.querySelectorAll('div').forEach(d => d.onclick = () => { input.value = d.dataset.name; list.style.display = 'none'; });
+      } catch (e) { /* 忽略 */ }
+    }, 250);
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('#' + inputId) && !e.target.closest('#' + listId)) list.style.display = 'none'; });
+}
+bindSuggest('from', 'fromList');
+bindSuggest('to', 'toList');
+$('swapBtn').onclick = () => { const a = $('from').value; $('from').value = $('to').value; $('to').value = a; };
+
+function seatSummary(seats) {
+  const items = Object.entries(seats).filter(([, v]) => v && v !== '--' && v !== '无');
+  if (!items.length) return '<span class="seat-no">暂无余票</span>';
+  return items.slice(0, 6).map(([k, v]) => `${k} <b>${v}</b>`).join(' · ');
+}
+
+function recCard(r, i) {
+  const badge = r.has_seat ? '<span class="seat-ok">● 有票</span>' : '<span class="seat-no">○ 无票/候补</span>';
+  if (r.type === 'direct') {
+    return `<div class="rec-card">
+      <div class="rec-head"><span class="rec-type">直达推荐 ${i + 1}</span>${badge}</div>
+      <div class="train-line">${r.code} <span class="arrow">${r.from} ${r.start_time} → ${r.to} ${r.arrive_time}</span></div>
+      <div class="train-meta">历时 ${r.duration} · ${seatSummary(r.seats)}</div>
+    </div>`;
+  }
+  const legs = r.legs.map(l =>
+    `<div class="leg">🚄 <b>${l.code}</b> ${l.from} ${l.start_time} → ${l.to} ${l.arrive_time}<br><span style="color:#8a919e;font-size:12px">${seatSummary(l.seats)}</span></div>`
+  ).join('');
+  return `<div class="rec-card transfer">
+    <div class="rec-head"><span class="rec-type">换乘推荐 ${i + 1} · ${r.middle}</span>${badge}</div>
+    ${legs}
+    <div class="train-meta">中转等待 ${r.wait_time}${r.same_station ? ' · 同站换乘' : ''} · 全程约 ${r.total_duration}</div>
+  </div>`;
+}
+
+$('queryBtn').onclick = async () => {
+  const from = $('from').value.trim(), to = $('to').value.trim(), date = $('date').value;
+  const box = $('result');
+  if (!from || !to) { box.innerHTML = '<div class="error">请填写出发地和目的地</div>'; return; }
+  const btn = $('queryBtn');
+  btn.disabled = true; btn.textContent = '查询中…';
+  box.innerHTML = '<div class="loading">正在查询 12306 余票并规划路线…</div>';
+  try {
+    const r = await fetch(`${API}/api/suggest?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${date}`);
+    const j = await r.json();
+    if (j.error) throw new Error(j.error);
+
+    let html = `<div class="sec-title">✨ 智能路线推荐 <span class="tag">${j.date} ${j.from} → ${j.to}</span></div>`;
+    html += j.recommended.length ? j.recommended.map(recCard).join('') : '<div class="empty">暂无推荐方案</div>';
+
+    html += `<div class="sec-title">🚄 直达车次 <span class="tag">${j.direct_count} 趟</span></div>`;
+    if (j.direct.length) {
+      html += `<table class="trains"><tr><th>车次</th><th>时间</th><th>历时</th><th>余票</th></tr>` +
+        j.direct.map(t => `<tr>
+          <td><div class="tcode">${t.code}</div><div style="color:#8a919e;font-size:12px">${t.from}→${t.to}</div></td>
+          <td><div class="ttime">${t.start_time}</div><div style="color:#8a919e">↓</div><div class="ttime">${t.arrive_time}</div></td>
+          <td>${t.duration}</td>
+          <td class="seats-cell">${seatSummary(t.seats)}</td>
+        </tr>`).join('') + `</table>`;
+    } else html += '<div class="empty">当日无直达车次</div>';
+
+    if (j.transfers.length) {
+      html += `<div class="sec-title">🔀 换乘方案 <span class="tag">${j.transfer_count} 个</span></div>`;
+      html += j.transfers.map((t, i) => recCard({ type: 'transfer', ...t }, i)).join('');
+    }
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = `<div class="error">查询失败：${e.message}<br>请稍后重试</div>`;
+  }
+  btn.disabled = false; btn.textContent = '查询路线';
+};
+</script>
+</body>
+</html>
